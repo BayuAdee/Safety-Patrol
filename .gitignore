@@ -27,3 +27,4 @@ dist-ssr
 
 # data internal, jangan di-push
 *.xlsx
+.env.example
