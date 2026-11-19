@@ -44,33 +44,13 @@ create table findings (
 );
 
 -- ========== Tindak lanjut (tahap After, diisi PIC departemen) ==========
--- Primary key = finding_id: satu temuan hanya bisa ditutup sekali.
+-- Primary key = finding_id: satu temuan hanya bisa ditutup sekali. After cukup foto; waktu tutup otomatis.
 create table resolutions (
   finding_id  bigint primary key references findings on delete cascade,
-  description text not null,
   photo_after text not null,
-  rank_after  char(1) check (rank_after in ('A','B','C')),   -- Safety: wajib, 5S: harus kosong
-  preventive  text,                                          -- 5S: opsional, Safety: harus kosong
   closed_by   uuid not null default auth.uid() references profiles,
   closed_at   timestamptz not null default now()
 );
-
--- Aturan yang bergantung pada jenis temuan (tidak bisa ditulis sebagai check biasa).
-create function public.check_resolution() returns trigger
-language plpgsql security definer set search_path = public as
-$$ declare t text;
-begin
-  select type into t from public.findings where id = new.finding_id;
-  if t = 'safety' and (new.rank_after is null or new.preventive is not null) then
-    raise exception 'Safety: rank_after wajib, preventive harus kosong';
-  elsif t = '5s' and new.rank_after is not null then
-    raise exception '5S: rank_after harus kosong';
-  end if;
-  return new;
-end $$;
-
-create trigger resolution_rules before insert on resolutions
-for each row execute function public.check_resolution();
 
 -- Status dan kode TRF-001 dihitung, tidak disimpan.
 create view v_findings with (security_invoker = true) as

@@ -1,15 +1,16 @@
 import { useCallback, useEffect, useState } from 'react'
-import { ArrowLeft, CheckCircle, ChevronRight, ClipboardEdit, Info, LogOut, ShieldAlert, Wrench } from 'lucide-react'
+import { ArrowLeft, BarChart3, CheckCircle, ChevronRight, ClipboardEdit, Info, LogOut, ShieldAlert, Wrench } from 'lucide-react'
 import { supabase } from '../supabase'
 import CreateForm from './CreateForm'
+import Rekap from './Rekap'
 import ResolveForm from './ResolveForm'
 import TaskList from './TaskList'
 
-const TITLE = { HOME: 'YFI Patrol', CREATE: 'Lapor Temuan', TASK_LIST: 'Daftar Tugas', RESOLVE: 'Tutup Temuan' }
+const TITLE = { HOME: 'YFI Patrol', CREATE: 'Lapor Temuan', TASK_LIST: 'Daftar Tugas', RESOLVE: 'Tutup Temuan', REKAP: 'Rekap Temuan' }
 
 // Tampilan dari yfi_patrol_user_portal.tsx. Layar pindah lewat state, seperti mockup.
 export default function Portal({ profile }) {
-  const [view, setView] = useState('HOME') // HOME, CREATE, TASK_LIST, RESOLVE
+  const [view, setView] = useState('HOME') // HOME, CREATE, TASK_LIST, RESOLVE, REKAP
   const [tasks, setTasks] = useState(null)
   const [taskErr, setTaskErr] = useState('')
   const [selected, setSelected] = useState(null)
@@ -49,12 +50,14 @@ export default function Portal({ profile }) {
         title="Buat Temuan Baru" sub="Lapor form Safety / 5S (Auditor)" />
       <MenuButton onClick={() => setView('TASK_LIST')} border="border-gray-300" iconCls="bg-gray-100 text-gray-900" badge={tasks?.length} icon={<Wrench size={24} />}
         title="Tugas Perbaikan" sub={`Area ${dept} (PIC)`} />
+      {profile.is_admin && <MenuButton onClick={() => setView('REKAP')} border="border-gray-300" iconCls="bg-gray-100 text-gray-900" icon={<BarChart3 size={24} />}
+        title="Rekap & Grafik" sub="Safety & 5S per semester (Admin)" />}
     </div>
   )
 
   return (
     <div className="flex min-h-screen justify-center bg-gray-200">
-      <div className="flex w-full max-w-md flex-col bg-gray-100">
+      <div className={`flex w-full ${view === 'REKAP' ? 'max-w-5xl' : 'max-w-md'} flex-col bg-gray-100`}>
         <header className="sticky top-0 z-20 flex h-16 shrink-0 items-center justify-between bg-gray-900 p-4 text-white shadow-md">
           <div className="flex items-center gap-3">
             {view === 'HOME'
@@ -76,6 +79,7 @@ export default function Portal({ profile }) {
         {view === 'HOME' && home}
         {view === 'CREATE' && <CreateForm onDone={() => done('Temuan berhasil dilaporkan!', 'HOME')} />}
         {view === 'TASK_LIST' && <TaskList tasks={tasks} error={taskErr} dept={dept} onPick={(t) => { setSelected(t); setView('RESOLVE') }} />}
+        {view === 'REKAP' && <Rekap />}
         {view === 'RESOLVE' && <ResolveForm task={selected} onDone={() => done('Tugas perbaikan berhasil ditutup!', 'TASK_LIST')} />}
       </div>
     </div>

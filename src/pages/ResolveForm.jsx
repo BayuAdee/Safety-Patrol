@@ -1,9 +1,9 @@
 import { useState } from 'react'
 import { AlertTriangle, CheckCircle, Wrench } from 'lucide-react'
 import { insertWithPhoto } from '../supabase'
-import { CARD, FIVE_R, FOUR_M, INPUT, KAIZEN, PhotoInput, SQCDM, STOP6, SignedImg, TYPE, labels } from '../ui'
+import { CARD, FIVE_R, FOUR_M, KAIZEN, PhotoInput, SQCDM, STOP6, SignedImg, TYPE, labels } from '../ui'
 
-// Layar RESOLVE (tahap After). Insert ke resolutions = temuan Closed (status dihitung di v_findings).
+// Layar RESOLVE (tahap After): cukup foto. Insert ke resolutions = Closed; closed_at diisi database.
 export default function ResolveForm({ task, onDone }) {
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
@@ -36,6 +36,7 @@ export default function ResolveForm({ task, onDone }) {
           {info('📍 Area', task.areas?.name)}
           {info('⚠️ Tipe', TYPE[task.type])}
           {info('🔍 4M', labels(FOUR_M, task.four_m))}
+          {info('🕒 Dibuat', new Date(task.created_at).toLocaleString('id-ID', { dateStyle: 'short', timeStyle: 'short' }))}
           <p>📅 Due: <span className="font-semibold text-red-600">{task.due_date ?? '-'}</span></p>
           {safety ? <>
             {info('STOP 6', STOP6[task.stop6])}
@@ -53,29 +54,8 @@ export default function ResolveForm({ task, onDone }) {
         <div className={CARD}>
           <h3 className="flex items-center gap-2 border-b pb-2 font-bold text-gray-900"><Wrench size={18} /> Form Tindakan (After)</h3>
 
-          {safety ? (
-            <fieldset className="text-xs font-bold text-gray-500">
-              <legend>Rank After - WAJIB</legend>
-              <div className="mt-1 flex gap-2">
-                {['A', 'B', 'C'].map((r) => (
-                  <label key={r} className="flex-1 cursor-pointer rounded-lg border border-gray-300 bg-gray-50 p-3 text-center text-sm text-gray-800 has-[:checked]:border-gray-900 has-[:checked]:bg-gray-900 has-[:checked]:text-white">
-                    <input type="radio" name="rank_after" value={r} required className="sr-only" /> {r}
-                  </label>
-                ))}
-              </div>
-            </fieldset>
-          ) : (
-            <label className="block text-xs font-bold text-gray-500">
-              Tindakan Pencegahan (opsional)
-              <textarea name="preventive" className={`${INPUT} h-16`} placeholder="Apa ide Anda agar masalah ini tidak terulang?" />
-            </label>
-          )}
-
-          <label className="block text-xs font-bold text-gray-500">
-            Deskripsi Perbaikan (Corrective)
-            <textarea name="description" required className={`${INPUT} h-24`} placeholder="Jelaskan apa yang sudah Anda perbaiki saat ini..." />
-          </label>
           <PhotoInput label="Foto After (Bukti Selesai) - WAJIB" />
+          <p className="text-xs text-gray-500">Tanggal dan jam selesai tercatat otomatis saat dikirim.</p>
         </div>
 
         {error && <p className="text-sm text-red-600">{error}</p>}

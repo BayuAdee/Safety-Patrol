@@ -82,25 +82,24 @@ begin
   -- ===== After =====
   perform pg_temp.as_user('andi@contoh.com');
   o := o || pg_temp.cek('Andi (bukan PIC Maintenance) mencoba menutup', 'DITOLAK', pg_temp.try($q$
-    insert into resolutions(finding_id,description,photo_after,rank_after)
-    values ((select id from findings where description='[UJI] Kabel terkelupas'),'x','uji/a.jpg','B') $q$));
+    insert into resolutions(finding_id,photo_after)
+    values ((select id from findings where description='[UJI] Kabel terkelupas'),'uji/a.jpg') $q$));
   perform pg_temp.as_user('budi@contoh.com');
-  o := o || pg_temp.cek('Budi tutup Safety tanpa rank_after', 'DITOLAK', pg_temp.try($q$
-    insert into resolutions(finding_id,description,photo_after)
-    values ((select id from findings where description='[UJI] Kabel terkelupas'),'Kabel dibungkus','uji/b.jpg') $q$));
-  o := o || pg_temp.cek('Budi tutup Safety dengan rank_after', 'OK', pg_temp.try($q$
-    insert into resolutions(finding_id,description,photo_after,rank_after)
-    values ((select id from findings where description='[UJI] Kabel terkelupas'),'Kabel dibungkus','uji/b.jpg','C') $q$));
+  o := o || pg_temp.cek('Budi tutup Safety tanpa foto', 'DITOLAK', pg_temp.try($q$
+    insert into resolutions(finding_id)
+    values ((select id from findings where description='[UJI] Kabel terkelupas')) $q$));
+  o := o || pg_temp.cek('Budi tutup Safety dengan foto', 'OK', pg_temp.try($q$
+    insert into resolutions(finding_id,photo_after)
+    values ((select id from findings where description='[UJI] Kabel terkelupas'),'uji/b.jpg') $q$));
+  o := o || pg_temp.cek('Waktu tutup terisi otomatis', '1 baris',
+        pg_temp.n($q$ select * from resolutions where photo_after='uji/b.jpg' and closed_at is not null $q$));
   o := o || pg_temp.cek('Budi menutup temuan yang sama dua kali', 'DITOLAK', pg_temp.try($q$
-    insert into resolutions(finding_id,description,photo_after,rank_after)
-    values ((select id from findings where description='[UJI] Kabel terkelupas'),'dobel','uji/b2.jpg','C') $q$));
+    insert into resolutions(finding_id,photo_after)
+    values ((select id from findings where description='[UJI] Kabel terkelupas'),'uji/b2.jpg') $q$));
   perform pg_temp.as_user('citra@contoh.com');
-  o := o || pg_temp.cek('Citra tutup 5S dengan rank_after (tidak boleh)', 'DITOLAK', pg_temp.try($q$
-    insert into resolutions(finding_id,description,photo_after,rank_after)
-    values ((select id from findings where description='[UJI] Kardus halangi jalur'),'x','uji/c.jpg','B') $q$));
-  o := o || pg_temp.cek('Citra tutup 5S dengan tindakan pencegahan', 'OK', pg_temp.try($q$
-    insert into resolutions(finding_id,description,photo_after,preventive)
-    values ((select id from findings where description='[UJI] Kardus halangi jalur'),'Kardus dipindah','uji/c.jpg','Tambah rak') $q$));
+  o := o || pg_temp.cek('Citra tutup 5S dengan foto', 'OK', pg_temp.try($q$
+    insert into resolutions(finding_id,photo_after)
+    values ((select id from findings where description='[UJI] Kardus halangi jalur'),'uji/c.jpg') $q$));
 
   -- ===== Hak ubah =====
   perform pg_temp.as_user('budi@contoh.com');
