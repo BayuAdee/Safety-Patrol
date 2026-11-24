@@ -1,7 +1,7 @@
 import { strFromU8, strToU8, unzipSync, zipSync } from 'fflate'
 
 // Mengisi public/rekap-template.xlsx (dibuat scripts/buat_template.py) lalu mengembalikan file .xlsx.
-// Template: sheet1 = "Grafik 2026" (4 grafik membaca sel C11:P18), sheet2 = SAFETY, sheet3 = 5S.
+// Template: sheet1 = "Grafik Bulanan", sheet2 = "Grafik Kategori", sheet3 = SAFETY, sheet4 = 5S.
 // ponytail: tulis XML langsung; library Excel umum (SheetJS/ExcelJS) membuang grafik template.
 
 const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -20,16 +20,28 @@ function cell(ref, s, v) {
 const setCell = (xml, ref, v) =>
   xml.replace(new RegExp(`<c r="${ref}"(?: s="(\\d+)")?[^>]*?(?:/>|>.*?</c>)`), (_, s) => cell(ref, s, v))
 
-const GRAFIK_ROWS = ['m1', 'm2', 'total', 'open1', 'close1', 'open2', 'close2'] // baris 12..18
+// Kolom B..H per bulan (urutan = COLS di buat_template.py). Safety baris 5-16, 5S baris 21-32 (12 baris bulan).
+const BULANAN = ['m1', 'm2', 'total', 'open1', 'close1', 'open2', 'close2']
 
-function grafik(xml, { title, months, rekap }) {
-  xml = setCell(xml, 'B7', title)
-  for (const [type, c0] of [['safety', 2], ['5s', 10]]) {   // Safety C..H, 5S K..P
-    months.forEach((m, i) => {
-      xml = setCell(xml, `${colName(c0 + i)}11`, m)
-      GRAFIK_ROWS.forEach((k, r) => { xml = setCell(xml, `${colName(c0 + i)}${12 + r}`, rekap[type][k][i]) })
-    })
+function bulanan(xml, { title, period, months, rekap }) {
+  xml = setCell(xml, 'B1', title)
+  xml = setCell(xml, 'B2', `PT YAHATA FASTENER INDONESIA  |  ${period}`)
+  for (const [type, top] of [['safety', 5], ['5s', 21]]) {
+    for (let i = 0; i < 12; i++) {       // baris lebih dari jumlah bulan dikosongkan
+      xml = setCell(xml, `A${top + i}`, months[i] ?? '')
+      BULANAN.forEach((k, c) => { xml = setCell(xml, `${colName(1 + c)}${top + i}`, i < months.length ? rekap[type][k][i] : '') })
+    }
   }
+  return xml
+}
+
+// k = rekapKategori(). Baris 5-9 = R1..R5 (B Before, C Sisa Open, D..H S..M); baris 13-20 = Total, A..F, O
+// (B semua Safety, C..E Rank A/B/C). Baris 13 kolom B..E sekaligus = grafik per Rank.
+function kategori(xml, period, k) {
+  const put = (c, r, v) => { xml = setCell(xml, `${colName(c)}${r}`, v) }
+  put(1, 2, `PT YAHATA FASTENER INDONESIA  |  ${period}`)
+  k.fiveR.before.forEach((v, i) => { put(1, 5 + i, v); put(2, 5 + i, k.fiveR.open[i]); k.sqcdm[i].forEach((q, j) => put(3 + j, 5 + i, q)) })
+  k.stop6.forEach((v, i) => { put(1, 13 + i, v); k.rankStop6.forEach((s, j) => put(2 + j, 13 + i, s[i])) })
   return xml
 }
 
@@ -80,19 +92,27 @@ function dataSheet(f, n, period, rows) {
     + rels.join('') + '</Relationships>'
 }
 
-// data: { year, title, period, months, rekap, safety: rows, fiveS: rows }
+// data: { title, period, months: [label..] (1-12), rekap: rekap(), kategori: rekapKategori(), safety: rows, fiveS: rows }
 export function buildXlsx(template, data) {
   const f = unzipSync(template)
   const text = (p) => (typeof f[p] === 'string' ? f[p] : strFromU8(f[p]))
-  for (const p of ['xl/worksheets/sheet1.xml', 'xl/worksheets/sheet2.xml', 'xl/worksheets/sheet3.xml']) f[p] = text(p)
+  const sheet = (n) => `xl/worksheets/sheet${n}.xml`
+  for (const n of [1, 2, 3, 4]) f[sheet(n)] = text(sheet(n))
 
-  f['xl/worksheets/sheet1.xml'] = grafik(f['xl/worksheets/sheet1.xml'], data)
-  dataSheet(f, 2, data.period, data.safety)
-  dataSheet(f, 3, data.period, data.fiveS)
+  f[sheet(1)] = bulanan(f[sheet(1)], data)
+  f[sheet(2)] = kategori(f[sheet(2)], data.period, data.kategori)
+  dataSheet(f, 3, data.period, data.safety)
+  dataSheet(f, 4, data.period, data.fiveS)
+  // Foto disimpan .jpg; tanpa tipe ini terdaftar Excel menganggap file rusak.
+  const ct = text('[Content_Types].xml')
+  if (!ct.includes('Extension="jpg"')) f['[Content_Types].xml'] = ct.replace('<Default ', '<Default Extension="jpg" ContentType="image/jpeg"/><Default ')
 
-  // Nama sheet ikut tahun: "Grafik 2027". Rumus grafik merujuk nama sheet, jadi ikut diganti.
-  for (const p of Object.keys(f).filter((p) => p === 'xl/workbook.xml' || /^xl\/charts\/grafik\d\.xml$/.test(p)))
-    f[p] = text(p).replaceAll('Grafik 2026', `Grafik ${data.year}`)
+  // Grafik bulanan merujuk 12 baris (5-16, 21-32); dipendekkan ke jumlah bulan agar tidak ada kategori kosong.
+  const n = data.months.length
+  for (const p of Object.keys(f).filter((p) => /^xl\/charts\/chart\d+\.xml$/.test(p))) {
+    const x = text(p)
+    if (x.includes("'Grafik Bulanan'!")) f[p] = x.replace(/\$16(?!\d)/g, `$${4 + n}`).replace(/\$32(?!\d)/g, `$${20 + n}`)
+  }
 
   for (const p in f) if (typeof f[p] === 'string') f[p] = strToU8(f[p])
   return zipSync(f, { level: 6 })

@@ -1,40 +1,24 @@
-import { useState } from 'react'
-import { supabase } from '../supabase'
+import { LogIn } from 'lucide-react'
+import { SUPERAPPS } from '../api'
+import { BTN } from '../ui'
 
-export default function Login() {
-  const [error, setError] = useState('')
-  const [busy, setBusy] = useState(false)
-
-  async function submit(e) {
-    e.preventDefault()
-    setBusy(true)
-    const f = new FormData(e.target)
-    const { error } = await supabase.auth.signInWithPassword({
-      email: f.get('email'),
-      password: f.get('password'),
-    })
-    setBusy(false)
-    if (error) setError(error.message === 'Invalid login credentials' ? 'Email atau password salah.' : error.message)
-  }
-
-  const input = 'w-full bg-gray-50 border border-gray-300 p-3 rounded-lg focus:ring-2 focus:ring-gray-900 outline-none'
+// Belum login: sistem ini hanya dimasuki lewat Superapps (SSO), tanpa form login sendiri.
+// error: pesan dari tiket Superapps yang gagal (kedaluwarsa, NIK tidak terdaftar, dst.).
+export default function Login({ error }) {
   return (
-    <div className="flex min-h-screen justify-center bg-gray-200">
-      <form onSubmit={submit} className="flex w-full max-w-md flex-col justify-center gap-4 bg-white p-6">
-        <div className="mb-4 flex items-center gap-3">
-          <img src="/logo.jpg" alt="Logo YFI" className="h-14 w-14 rounded-full" />
-          <div>
-            <h1 className="text-2xl font-bold text-gray-800">YFI Patrol</h1>
-            <p className="text-sm text-gray-500">PT Yahata Fastener Indonesia</p>
-          </div>
+    <div className="flex min-h-dvh flex-col items-center justify-center gap-6 p-4">
+      <div className="flex w-full max-w-sm flex-col items-center gap-4 rounded-lg border border-gray-200 bg-white p-6 text-center">
+        <img src="/logo.jpg" alt="Logo PT Yahata Fastener Indonesia" className="h-16 w-16 rounded-full" />
+        <div>
+          <h1 className="text-xl font-semibold text-gray-900">Sistem Informasi Safety Patrol & 5S/5R</h1>
+          <p className="text-sm text-gray-500">PT Yahata Fastener Indonesia</p>
         </div>
-        <input name="email" type="email" placeholder="Email" autoComplete="username" required className={input} />
-        <input name="password" type="password" placeholder="Password" autoComplete="current-password" required className={input} />
-        {error && <p className="text-sm text-red-600">{error}</p>}
-        <button disabled={busy} className="w-full rounded-xl bg-gray-900 py-4 font-bold text-white shadow-lg disabled:opacity-50">
-          {busy ? 'Memproses...' : 'MASUK'}
-        </button>
-      </form>
+        {error
+          ? <p role="alert" className="w-full rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
+          : <p className="text-sm text-gray-700">Silakan login ke Superapps dahulu, lalu pilih Safety Patrol.</p>}
+        <a href={SUPERAPPS} className={`${BTN} w-full py-3`}><LogIn size={16} aria-hidden="true" /> Buka Superapps</a>
+      </div>
+      <p className="text-center text-xs text-gray-500">© {new Date().getFullYear()} PT Yahata Fastener Indonesia · Penggunaan internal</p>
     </div>
   )
 }

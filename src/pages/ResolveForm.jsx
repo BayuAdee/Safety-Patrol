@@ -1,9 +1,9 @@
 import { useState } from 'react'
 import { AlertTriangle, CheckCircle, Wrench } from 'lucide-react'
-import { insertWithPhoto } from '../supabase'
-import { CARD, FIVE_R, FOUR_M, KAIZEN, PhotoInput, SQCDM, STOP6, SignedImg, TYPE, labels } from '../ui'
+import { insertWithPhoto } from '../api'
+import { BTN, CARD, CARD_TITLE, FIVE_R, FOUR_M, KAIZEN, PhotoInput, SQCDM, STOP6, ScoreInput, SignedImg, TYPE, labels } from '../ui'
 
-// Layar RESOLVE (tahap After): cukup foto. Insert ke resolutions = Closed; closed_at diisi database.
+// Layar RESOLVE (tahap After): foto; Safety juga poin After (rank dihitung database). Insert ke resolutions = Closed; closed_at diisi database.
 export default function ResolveForm({ task, onDone }) {
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
@@ -14,53 +14,56 @@ export default function ResolveForm({ task, onDone }) {
     setBusy(true)
     setError('')
     try {
-      await insertWithPhoto('resolutions', e.target, 'photo_after', { finding_id: task.id })
+      await insertWithPhoto('resolutions', e.target, { finding_id: task.id })
       onDone()
     } catch (err) {
-      setError(err.code === '23505' ? 'Temuan ini sudah ditutup.' : err.message)
+      setError(err.message)
       setBusy(false)
     }
   }
 
-  const info = (k, v) => <p>{k}: <span className="font-semibold text-gray-800">{v}</span></p>
+  const info = (k, v, cls = 'text-gray-900') => <div><dt className="text-xs text-gray-500">{k}</dt><dd className={`text-sm font-medium ${cls}`}>{v}</dd></div>
 
   return (
-    <div className="pb-20">
-      <div className="border-b border-red-100 bg-red-50 p-4">
-        <div className="mb-2 flex items-center justify-between">
-          <h3 className="flex items-center gap-2 font-bold text-red-800"><AlertTriangle size={18} /> Detail Temuan (Before)</h3>
-          <span className="rounded bg-red-200 px-2 py-1 font-mono text-xs text-red-800">{task.code}</span>
+    <div className="flex flex-col gap-4 p-4 pb-8">
+      <section className="overflow-hidden rounded-lg border border-red-200 bg-white">
+        <div className="flex items-center justify-between gap-2 border-b border-red-200 bg-red-50 px-4 py-3">
+          <h2 className="flex items-center gap-2 text-base font-semibold text-red-800"><AlertTriangle size={18} aria-hidden="true" /> Detail Temuan (Before)</h2>
+          <span className="rounded border border-red-200 bg-white px-2 py-0.5 font-mono text-xs text-red-800">{task.code}</span>
         </div>
-        <p className="mb-3 rounded border border-red-100 bg-white p-3 text-sm font-medium text-gray-800 shadow-sm">"{task.description}"</p>
-        <div className="mb-3 grid grid-cols-2 gap-2 text-xs text-gray-600">
-          {info('📍 Area', task.areas?.name)}
-          {info('⚠️ Tipe', TYPE[task.type])}
-          {info('🔍 4M', labels(FOUR_M, task.four_m))}
-          {info('🕒 Dibuat', new Date(task.created_at).toLocaleString('id-ID', { dateStyle: 'short', timeStyle: 'short' }))}
-          <p>📅 Due: <span className="font-semibold text-red-600">{task.due_date ?? '-'}</span></p>
+        <div className="flex flex-col gap-4 p-4">
+          <p className="rounded-md border border-gray-200 bg-gray-50 p-3 text-sm text-gray-900">{task.description}</p>
+          <dl className="grid grid-cols-2 gap-x-4 gap-y-3">
+            {info('Area', task.areas?.name)}
+            {info('Jenis', TYPE[task.type])}
+            {info('Akar Masalah (4M)', labels(FOUR_M, task.four_m))}
+            {info('Dibuat', new Date(task.created_at).toLocaleString('id-ID', { dateStyle: 'short', timeStyle: 'short' }))}
+            {info('Tenggat', task.due_date ?? '-', 'text-red-600')}
           {safety ? <>
             {info('STOP 6', STOP6[task.stop6])}
-            {info('Rank', task.rank)}
+            {info('Rank', `${task.rank} (${task.score} poin)`)}
             {task.kaizen && info('Saran Kaizen', labels(KAIZEN, task.kaizen))}
           </> : <>
             {info('5R', FIVE_R[task.five_r])}
             {info('SQCDM', labels(SQCDM, task.sqcdm))}
           </>}
+          </dl>
+          <SignedImg path={task.photo_before} alt="Foto before" />
         </div>
-        <SignedImg path={task.photo_before} alt="Foto before" />
-      </div>
+      </section>
 
-      <form onSubmit={submit} className="flex flex-col gap-4 p-4">
+      <form onSubmit={submit} className="flex flex-col gap-4">
         <div className={CARD}>
-          <h3 className="flex items-center gap-2 border-b pb-2 font-bold text-gray-900"><Wrench size={18} /> Form Tindakan (After)</h3>
+          <h2 className={`${CARD_TITLE} flex items-center gap-2`}><Wrench size={18} aria-hidden="true" /> Form Tindakan (After)</h2>
 
+          {safety && <ScoreInput suffix="_after" />}
           <PhotoInput label="Foto After (Bukti Selesai) - WAJIB" />
           <p className="text-xs text-gray-500">Tanggal dan jam selesai tercatat otomatis saat dikirim.</p>
         </div>
 
-        {error && <p className="text-sm text-red-600">{error}</p>}
-        <button disabled={busy} className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl bg-gray-900 py-4 font-bold text-white shadow-lg hover:bg-gray-700 disabled:opacity-50">
-          <CheckCircle size={20} /> {busy ? 'Mengirim...' : 'TUNTASKAN TEMUAN'}
+        {error && <p role="alert" className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
+        <button disabled={busy} className={`${BTN} w-full py-3 sm:ml-auto sm:w-auto sm:px-8`}>
+          <CheckCircle size={18} aria-hidden="true" /> {busy ? 'Mengirim...' : 'Tutup Temuan'}
         </button>
       </form>
     </div>

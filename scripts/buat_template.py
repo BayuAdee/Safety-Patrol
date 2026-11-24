@@ -1,27 +1,28 @@
-# Membuat public/rekap-template.xlsx dari Excel patroli asli (sekali jalan, saat format berubah).
-#   python scripts/buat_template.py "Safety dan 5s Patrol dan grafik.xlsx"
-# Isi template: sheet "Grafik 2026" (gaya, logo, 4 grafik asli) + sheet SAFETY dan 5S (header rapi,
-# 1 baris contoh gaya). Data internal TIDAK ikut: sheet patroli dibuang, cache angka grafik dihapus.
-# Browser (src/xlsx.js) yang mengisi angka, daftar temuan, dan foto.
-import re, sys, zipfile
+# Membuat public/rekap-template.xlsx (sekali jalan, saat format berubah):  python scripts/buat_template.py
+# Isi: "Grafik Bulanan" (tabel per bulan Safety & 5S, 1-12 baris, + 4 grafik), "Grafik Kategori" (5R/SQCDM, STOP-6/Rank,
+# 12 grafik), SAFETY dan 5S (header + 1 baris contoh gaya). Browser (src/xlsx.js) mengisi angka, daftar temuan, foto,
+# dan memendekkan rentang grafik bulanan sesuai jumlah bulan.
+import zipfile
 from io import BytesIO
 from PIL import Image as PILImage
-from openpyxl import load_workbook
+from openpyxl import Workbook
+from openpyxl.chart import BarChart, Reference
+from openpyxl.chart.label import DataLabelList
+from openpyxl.chart.marker import DataPoint
+from openpyxl.chart.text import RichText
+from openpyxl.drawing.text import CharacterProperties, Paragraph, ParagraphProperties
 from openpyxl.drawing.image import Image
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
-from openpyxl.packaging import manifest
-manifest.mimetypes.add_type('image/webp', '.webp')  # Excel asli memuat foto webp; openpyxl belum mengenalnya
 
-SRC = sys.argv[1]
 OUT = 'public/rekap-template.xlsx'
-GRAFIK = 'Grafik 2026'
 
 # Kolom data. HARUS sama urutannya dengan SHEETS di src/xlsx.js. (judul, lebar, grup header)
 BASE = [('NO', 5), ('KODE', 10), ('TANGGAL', 12), ('MINGGU', 10), ('AREA', 20), ('FOTO BEFORE', 26),
         ('TEMUAN', 34), ('MATERIAL', 10, '4M'), ('MACHINE', 10, '4M'), ('MAN', 10, '4M'), ('METHOD', 10, '4M')]
-TAIL = [('AUDITOR', 14), ('PIC', 14), ('DUE DATE', 12), ('ACTUAL PERBAIKAN', 13), ('FOTO AFTER', 26), ('PROGRES', 11)]
+TAIL = [('AUDITOR', 14), ('PIC', 14), ('DIPERBAIKI OLEH', 14), ('DUE DATE', 12), ('ACTUAL PERBAIKAN', 13), ('FOTO AFTER', 26), ('PROGRES', 11)]
 SHEETS = {
-    'SAFETY': ('SAFETY PATROL & 4M ANALYSIS', BASE + [('STOP 6', 16), ('RANK', 7), ('SARAN KAIZEN', 22)] + TAIL),
+    'SAFETY': ('SAFETY PATROL & 4M ANALYSIS', BASE + [('STOP 6', 16), ('POIN BEFORE', 8), ('RANK BEFORE', 8), ('SARAN KAIZEN', 22)]
+               + TAIL[:-1] + [('POIN AFTER', 8), ('RANK AFTER', 8)] + TAIL[-1:]),
     '5S': ('5S/5R PATROL & 4M ANALYSIS', BASE + [('5R', 12), ('SQCDM', 12)] + TAIL),
 }
 
@@ -32,104 +33,143 @@ head_font = Font(bold=True, color='FFFFFF', size=10)
 center = Alignment(horizontal='center', vertical='center', wrap_text=True)
 left = Alignment(horizontal='left', vertical='center', wrap_text=True)
 
-wb = load_workbook(SRC, keep_links=False)
-for name in wb.sheetnames:
-    if name != GRAFIK:
-        del wb[name]
-g = wb[GRAFIK]
-g._charts.clear(); g._images.clear()        # grafik & logo asli disuntik utuh di bawah
-g.sheet_view.zoomScale = 70
-g.defined_names.clear(); wb.defined_names.clear()   # 300-an nama range rusak (#REF!) dari file asli
-g['B15'] = 'Status Open Minggu 1'                     # typo "Stus" di file asli
-g.page_setup.orientation, g.page_setup.paperSize = 'landscape', g.PAPERSIZE_A4
-g.sheet_properties.pageSetUpPr.fitToPage = True
-g.page_setup.fitToWidth = g.page_setup.fitToHeight = 1    # satu halaman
 
-for name, (title, cols) in SHEETS.items():
-    ws = wb.create_sheet(name)
+def header(ws, title):   # logo YFI + judul + baris periode (B2 diganti browser)
     ws.sheet_view.showGridLines = False
-    ws.sheet_view.zoomScale = 80
-    ws['A1'] = title
-    ws['A1'].font = Font(bold=True, size=16)
-    ws['A2'] = 'PT YAHATA FASTENER INDONESIA'          # diganti browser: + periode
-    ws['A2'].font = Font(bold=True, size=11, color='4B5563')
-    for i, c in enumerate(cols, 1):
-        L = ws.cell(4, i).column_letter
-        ws.column_dimensions[L].width = c[1]
-        for r in (4, 5):
-            ws.cell(r, i).fill, ws.cell(r, i).font = head_fill, head_font
-            ws.cell(r, i).alignment, ws.cell(r, i).border = center, box
-        if len(c) == 3:                                  # header 2 tingkat: 4M di atas
-            ws.cell(5, i, c[0])
-        else:
-            ws.cell(4, i, c[0]); ws.merge_cells(start_row=4, end_row=5, start_column=i, end_column=i)
-    m = [i for i, c in enumerate(cols, 1) if len(c) == 3]
-    ws.cell(4, m[0], '4M'); ws.merge_cells(start_row=4, end_row=4, start_column=m[0], end_column=m[-1])
-    ws.row_dimensions[4].height = 20; ws.row_dimensions[5].height = 20
-    # Baris 6 = contoh gaya baris data, baris 7 kolom terakhir = gaya PROGRES "Open" (merah).
-    for i, c in enumerate(cols, 1):
-        cell = ws.cell(6, i)
-        cell.border = box
-        cell.alignment = left if c[0] in ('AREA', 'TEMUAN', 'SARAN KAIZEN', 'SQCDM', 'STOP 6', 'AUDITOR', 'PIC') else center
-        cell.font = Font(size=10, bold=c[0] in ('PROGRES', 'MATERIAL', 'MACHINE', 'MAN', 'METHOD'))
-        if c[0] in ('TANGGAL', 'DUE DATE', 'ACTUAL PERBAIKAN'):
-            cell.number_format = 'dd/mm/yyyy'
-    o = ws.cell(7, len(cols))
-    o.border, o.alignment, o.font = box, center, Font(size=10, bold=True, color='DC2626')
-    ws.freeze_panes = 'A6'
+    jpg = BytesIO(); PILImage.open('public/logo.jpg').convert('RGB').save(jpg, 'JPEG')   # logo.jpg sebenarnya WebP
+    logo = Image(jpg); logo.width = logo.height = 48
+    ws.add_image(logo, 'A1')
+    ws['B1'] = title; ws['B1'].font = Font(bold=True, size=16)
+    ws['B2'] = 'PT YAHATA FASTENER INDONESIA'; ws['B2'].font = Font(bold=True, size=11, color='4B5563')
+    ws.row_dimensions[1].height = ws.row_dimensions[2].height = 20
     ws.page_setup.orientation, ws.page_setup.paperSize = 'landscape', ws.PAPERSIZE_A4
     ws.sheet_properties.pageSetUpPr.fitToPage = True
-    ws.page_setup.fitToWidth, ws.page_setup.fitToHeight = 1, 0   # 1 halaman lebar, tinggi bebas
-    ws.print_title_rows = '4:5'                                   # header diulang tiap halaman
-    ws.page_margins.left = ws.page_margins.right = 0.3
-    png = BytesIO(); PILImage.new('RGB', (8, 8), 'white').save(png, 'PNG')
-    ws.add_image(Image(png), 'F6')                       # placeholder: menyiapkan drawing, diganti browser
+    ws.page_setup.fitToWidth = ws.page_setup.fitToHeight = 1    # satu halaman
 
+def table(ws, top, head, labs):   # header di baris top, angka 0 (diisi browser) mulai kolom B
+    for c, h in enumerate(head, 1):
+        x = ws.cell(top, c, h); x.fill, x.font, x.alignment, x.border = head_fill, head_font, center, box
+    for r, lab in enumerate(labs, top + 1):
+        ws.cell(r, 1, lab).border = box
+        for c in range(2, len(head) + 1):
+            x = ws.cell(r, c, 0); x.border, x.alignment = box, center
+
+GRAY = '374151'
+# Warna grafik = layar Rekap (C di src/pages/Rekap.jsx, palet dataviz yang sudah dicek buta warna). HARUS sama.
+C = dict(blue='2A78D6', orange='EB6834', aqua='1BAF7A', yellow='EDA100', magenta='E87BA4', green='008300', violet='6250D6', red='E34948', gray='4B5563')
+SQ_C = [C[k] for k in ('blue', 'orange', 'aqua', 'yellow', 'magenta')]                           # S Q C D M
+S6_C = [C[k] for k in ('gray', 'blue', 'orange', 'aqua', 'yellow', 'magenta', 'green', 'violet')]  # Total, A..F, O
+RANK_C = [C[k] for k in ('gray', 'red', 'yellow', 'aqua')]                                         # Total, A, B, C
+
+def bar(ws, at, title, data, cats, colors=(GRAY,), rows=False, width=12, dense=False, points=None):
+    ch = BarChart(); ch.title = title; ch.title.overlay = False
+    ch.add_data(data, from_rows=rows, titles_from_data=len(colors) > 1)
+    ch.set_categories(cats)
+    for s, col in zip(ch.series, colors):
+        s.graphicalProperties.solidFill = col; s.graphicalProperties.line.solidFill = col
+    for i, col in enumerate(points or []):   # satu seri, warna per kategori (sama dengan layar)
+        pt = DataPoint(idx=i); pt.graphicalProperties.solidFill = col; pt.graphicalProperties.line.solidFill = col
+        ch.series[0].dPt.append(pt)
+    ch.dataLabels = DataLabelList(showVal=True, showSerName=False, showCatName=False, showLegendKey=False, showPercent=False)
+    if dense:   # grafik bulanan (s.d. 12 bulan x 4 batang): angka 0 tidak ditulis, batang lebih lebar, label 7pt
+        ch.dataLabels.numFmt = '0;-0;;'                        # bagian ke-3 format = nol -> kosong
+        ch.gapWidth = 30
+        small = CharacterProperties(sz=700)
+        ch.dataLabels.txPr = RichText(p=[Paragraph(pPr=ParagraphProperties(defRPr=small), endParaRPr=small)])
+    # ponytail: sumbu Y disembunyikan (angka sudah di atas batang); Excel tidak punya skala "bilangan bulat saja".
+    ch.x_axis.delete = False                                   # openpyxl 3.1 menyembunyikan sumbu bila tidak diset
+    ch.y_axis.delete = True; ch.y_axis.majorGridlines = None; ch.y_axis.scaling.min = 0
+    if len(colors) == 1: ch.legend = None
+    else: ch.legend.position, ch.legend.overlay = 'b', False
+    ch.width, ch.height = width, 7
+    ws.add_chart(ch, at)
+
+wb = Workbook()
+
+# ---- Grafik Bulanan: Safety header baris 4 (data 5-16), 5S header baris 20 (data 21-32), 12 baris bulan ----
+# Kolom B..H HARUS sama urutannya dengan BULANAN di src/xlsx.js. Grafik merujuk baris 5-16 / 21-32;
+# browser memendekkan ke jumlah bulan yang dipilih.
+g = wb.active
+g.title = 'Grafik Bulanan'
+header(g, 'REKAPITULASI TEMUAN SAFETY & 5S/5R')
+g.column_dimensions['A'].width = 10
+COLS = ['Minggu 1', 'Minggu 2', 'Total', 'Open Minggu 1', 'Close Minggu 1', 'Open Minggu 2', 'Close Minggu 2']
+for top, name in [(4, 'Safety'), (20, '5S/5R')]:
+    g.cell(top - 1, 1, f'Rekap Temuan {name}').font = Font(bold=True, size=11)
+    table(g, top, ['Bulan'] + COLS, [f'Bulan {i}' for i in range(1, 13)])
+    g.row_dimensions[top].height = 30
+    cats = Reference(g, min_col=1, min_row=top + 1, max_row=top + 12)
+    bar(g, f'J{top}', f'Temuan {name} per Minggu', Reference(g, min_col=2, max_col=4, min_row=top, max_row=top + 12), cats,
+        (C['blue'], C['orange'], C['violet']), width=18, dense=True)
+    bar(g, f'U{top}', f'Status {name}: Open & Close', Reference(g, min_col=5, max_col=8, min_row=top, max_row=top + 12), cats,
+        (C['orange'], C['blue'], C['red'], C['aqua']), width=18, dense=True)
+
+# ---- Grafik Kategori: B5:H9 = 5R (Before, Sisa Open, S..M), B13:E20 = STOP-6 x Rank (kategori() di src/xlsx.js) ----
+k = wb.create_sheet('Grafik Kategori')
+header(k, 'GRAFIK TEMUAN SAFETY & 5S/5R')
+k.column_dimensions['A'].width = 14
+table(k, 4, ['5R', 'Before', 'Sisa (Open)', 'S', 'Q', 'C', 'D', 'M'], ['R1 (Ringkas)', 'R2 (Rapi)', 'R3 (Resik)', 'R4 (Rawat)', 'R5 (Rajin)'])
+table(k, 12, ['STOP-6', 'Total', 'A', 'B', 'C'], ['Total', 'A', 'B', 'C', 'D', 'E', 'F', 'O'])
+k['B11'] = 'Rank (kolom)'; k['B11'].font = Font(size=9, color='6B7280')
+ref = lambda c1, r1, c2=None, r2=None: Reference(k, min_col=c1, min_row=r1, max_col=c2 or c1, max_row=r2 or r1)
+R5 = ref(1, 5, 1, 9); S6 = ref(1, 13, 1, 20)
+bar(k, 'J4', 'Temuan 5R Berdasarkan Kategori', ref(2, 5, 2, 9), R5, (C['violet'],))
+bar(k, 'R4', 'Target Perbaikan 5R (sasaran Sisa = 0)', ref(2, 4, 3, 9), R5, (C['blue'], C['red']))
+for i in range(5):
+    bar(k, f'{"JRZ"[i % 3]}{19 + 15 * (i // 3)}', f'R{i + 1} per S, Q, C, D, M', ref(4, 5 + i, 8), ref(4, 4, 8), rows=True, points=SQ_C)
+bar(k, 'J49', 'Temuan Safety Berdasarkan STOP-6', ref(2, 13, 2, 20), S6, points=S6_C)
+bar(k, 'R49', 'Temuan Safety Berdasarkan Rank', ref(2, 13, 5), ref(2, 12, 5), rows=True, points=RANK_C)
+for i, rk in enumerate('ABC'):
+    bar(k, f'{"JRZ"[i]}64', f'Rank {rk} Berdasarkan STOP-6', ref(3 + i, 13, 3 + i, 20), S6, points=S6_C)
+
+def data_sheets(wb):   # sheet SAFETY dan 5S
+    for name, (title, cols) in SHEETS.items():
+        ws = wb.create_sheet(name)
+        ws.sheet_view.showGridLines = False
+        ws.sheet_view.zoomScale = 80
+        ws['A1'] = title
+        ws['A1'].font = Font(bold=True, size=16)
+        ws['A2'] = 'PT YAHATA FASTENER INDONESIA'          # diganti browser: + periode
+        ws['A2'].font = Font(bold=True, size=11, color='4B5563')
+        for i, c in enumerate(cols, 1):
+            L = ws.cell(4, i).column_letter
+            ws.column_dimensions[L].width = c[1]
+            for r in (4, 5):
+                ws.cell(r, i).fill, ws.cell(r, i).font = head_fill, head_font
+                ws.cell(r, i).alignment, ws.cell(r, i).border = center, box
+            if len(c) == 3:                                  # header 2 tingkat: 4M di atas
+                ws.cell(5, i, c[0])
+            else:
+                ws.cell(4, i, c[0]); ws.merge_cells(start_row=4, end_row=5, start_column=i, end_column=i)
+        m = [i for i, c in enumerate(cols, 1) if len(c) == 3]
+        ws.cell(4, m[0], '4M'); ws.merge_cells(start_row=4, end_row=4, start_column=m[0], end_column=m[-1])
+        ws.row_dimensions[4].height = 20; ws.row_dimensions[5].height = 20
+        # Baris 6 = contoh gaya baris data, baris 7 kolom terakhir = gaya PROGRES "Open" (merah).
+        for i, c in enumerate(cols, 1):
+            cell = ws.cell(6, i)
+            cell.border = box
+            cell.alignment = left if c[0] in ('AREA', 'TEMUAN', 'SARAN KAIZEN', 'SQCDM', 'STOP 6', 'AUDITOR', 'PIC', 'DIPERBAIKI OLEH') else center
+            cell.font = Font(size=10, bold=c[0] in ('PROGRES', 'MATERIAL', 'MACHINE', 'MAN', 'METHOD'))
+            if c[0] in ('TANGGAL', 'DUE DATE', 'ACTUAL PERBAIKAN'):
+                cell.number_format = 'dd/mm/yyyy'
+        o = ws.cell(7, len(cols))
+        o.border, o.alignment, o.font = box, center, Font(size=10, bold=True, color='DC2626')
+        ws.freeze_panes = 'A6'
+        ws.page_setup.orientation, ws.page_setup.paperSize = 'landscape', ws.PAPERSIZE_A4
+        ws.sheet_properties.pageSetUpPr.fitToPage = True
+        ws.page_setup.fitToWidth, ws.page_setup.fitToHeight = 1, 0   # 1 halaman lebar, tinggi bebas
+        ws.print_title_rows = '4:5'                                   # header diulang tiap halaman
+        ws.page_margins.left = ws.page_margins.right = 0.3
+        png = BytesIO(); PILImage.new('RGB', (8, 8), 'white').save(png, 'PNG')
+        ws.add_image(Image(png), 'F6')                       # placeholder: menyiapkan drawing, diganti browser
+
+data_sheets(wb)
 buf = BytesIO(); wb.save(buf)
-
-# ---- Suntik drawing Grafik asli (4 grafik + 2 logo) ke sheet Grafik ----
-src = zipfile.ZipFile(SRC)
-rd = lambda n: src.read(n)
-tpl = zipfile.ZipFile(BytesIO(buf.getvalue()))
-files = {n: tpl.read(n) for n in tpl.namelist()}
-
-def strip_cache(xml):  # angka lama dibuang; Excel menggambar ulang dari sel
-    return re.sub(rb'<c:(num|str)Cache>.*?</c:\1Cache>', b'', xml, flags=re.S)
-
-files['xl/drawings/grafik.xml'] = rd('xl/drawings/drawing3.xml')
-files['xl/drawings/_rels/grafik.xml.rels'] = (rd('xl/drawings/_rels/drawing3.xml.rels')
-    .replace(b'../media/image24.jpg', b'../media/k3.jpg').replace(b'../media/image25.jpg', b'../media/yahata.jpg')
-    .replace(b'../charts/chart', b'../charts/grafik'))
-files['xl/media/k3.jpg'] = rd('xl/media/image24.jpg')
-files['xl/media/yahata.jpg'] = rd('xl/media/image25.jpg')
-for i in range(1, 5):
-    files[f'xl/charts/grafik{i}.xml'] = strip_cache(rd(f'xl/charts/chart{i}.xml'))
-    files[f'xl/charts/_rels/grafik{i}.xml.rels'] = (rd(f'xl/charts/_rels/chart{i}.xml.rels')
-        .replace(b'Target="colors', b'Target="grafikcolors').replace(b'Target="style', b'Target="grafikstyle'))
-    files[f'xl/charts/grafikstyle{i}.xml'] = rd(f'xl/charts/style{i}.xml')
-    files[f'xl/charts/grafikcolors{i}.xml'] = rd(f'xl/charts/colors{i}.xml')
-
-sheet = 'xl/worksheets/sheet1.xml'   # openpyxl: sheet pertama = Grafik
-assert b'<drawing' not in files[sheet]
-files[sheet] = files[sheet].replace(b'</worksheet>', b'<drawing r:id="rIdGrafik"/></worksheet>')
-if b'xmlns:r=' not in files[sheet][:600]:
-    files[sheet] = files[sheet].replace(b'<worksheet ', b'<worksheet xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" ', 1)
-rels = 'xl/worksheets/_rels/sheet1.xml.rels'
-rel = b'<Relationship Id="rIdGrafik" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/drawing" Target="../drawings/grafik.xml"/>'
-files[rels] = (files[rels].replace(b'</Relationships>', rel + b'</Relationships>') if rels in files else
-    b'<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' + rel + b'</Relationships>')
-
-ct = files['[Content_Types].xml']
-add = b'<Override PartName="/xl/drawings/grafik.xml" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/>'
-for i in range(1, 5):
-    add += (f'<Override PartName="/xl/charts/grafik{i}.xml" ContentType="application/vnd.openxmlformats-officedocument.drawingml.chart+xml"/>'
-            f'<Override PartName="/xl/charts/grafikstyle{i}.xml" ContentType="application/vnd.ms-office.chartstyle+xml"/>'
-            f'<Override PartName="/xl/charts/grafikcolors{i}.xml" ContentType="application/vnd.ms-office.chartcolorstyle+xml"/>').encode()
-if b'Extension="jpg"' not in ct:
-    add += b'<Default Extension="jpg" ContentType="image/jpeg"/>'
-files['[Content_Types].xml'] = ct.replace(b'</Types>', add + b'</Types>')
-
+# openpyxl menulis numFmt label tanpa sourceLinked="0", sehingga Excel tetap memakai format sel (angka 0 tampil).
+src = zipfile.ZipFile(buf)
 with zipfile.ZipFile(OUT, 'w', zipfile.ZIP_DEFLATED) as z:
-    for n, b in files.items():
+    for n in src.namelist():
+        b = src.read(n)
+        if n.startswith('xl/charts/'): b = b.replace(b'<numFmt formatCode="0;-0;;" />', b'<numFmt formatCode="0;-0;;" sourceLinked="0"/>')
         z.writestr(n, b)
 print('OK', OUT)
