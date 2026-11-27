@@ -31,3 +31,6 @@ dist-ssr
 !public/rekap-template.xlsx
 
 AKUN-UJI.md
+
+start.bat
+stop.bat
