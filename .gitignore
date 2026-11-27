@@ -37,3 +37,27 @@ AKUN-UJI.md
 
 start.bat
 stop.bat
+
+# Laravel
+.env.backup
+.env.production
+.phpactor.json
+.phpunit.result.cache
+/.codex
+/.cursor/
+/idea
+/.nova
+/.phpunit.cache
+/.zed
+/auth.json
+/public/build
+/public/fonts-manifest.dev.json
+/public/hot
+/public/storage
+/storage/*.key
+/storage/pail
+/vendor
+_ide_helper.php
+Homestead.json
+Homestead.yaml
+Thumbs.db
