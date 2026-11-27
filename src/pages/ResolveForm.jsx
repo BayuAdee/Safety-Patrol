@@ -42,11 +42,12 @@ export default function ResolveForm({ task, onDone }) {
           {safety ? <>
             {info('STOP 6', STOP6[task.stop6])}
             {info('Rank', `${task.rank} (${task.score} poin)`)}
-            {task.kaizen && info('Saran Kaizen', labels(KAIZEN, task.kaizen))}
+            {task.kaizen && info('Kaizen Category', labels(KAIZEN, task.kaizen))}
           </> : <>
             {info('5R', FIVE_R[task.five_r])}
             {info('SQCDM', labels(SQCDM, task.sqcdm))}
           </>}
+            {task.kaizen_note && info('Kaizen', task.kaizen_note)}
           </dl>
           <SignedImg path={task.photo_before} alt="Foto before" />
         </div>

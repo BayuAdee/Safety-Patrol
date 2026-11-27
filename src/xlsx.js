@@ -1,7 +1,8 @@
 import { strFromU8, strToU8, unzipSync, zipSync } from 'fflate'
 
 // Mengisi public/rekap-template.xlsx (dibuat scripts/buat_template.py) lalu mengembalikan file .xlsx.
-// Template: sheet1 = "Grafik Bulanan", sheet2 = "Grafik Kategori", sheet3 = SAFETY, sheet4 = 5S.
+// Template: sheet1 = "Grafik Bulanan", sheet2 = "Grafik Kategori", sheet3 = SAFETY, sheet4 = 5S (sumber gaya;
+// di hasil diganti satu sheet per patroli, mis. "Safety Week 1 14 Nov 2026").
 // ponytail: tulis XML langsung; library Excel umum (SheetJS/ExcelJS) membuang grafik template.
 
 const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -57,17 +58,13 @@ function anchor(id, col, row, { w, h }) {
     + `<xdr:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></xdr:spPr></xdr:pic><xdr:clientData/></xdr:oneCellAnchor>`
 }
 
-// rows: array baris, tiap baris array nilai sesuai urutan kolom template.
-// Nilai: string | number | Date | null | { img: { bytes, w, h } } (foto).
-function dataSheet(f, n, period, rows) {
-  const path = `xl/worksheets/sheet${n}.xml`
-  let xml = f[path]
-  const style = Object.fromEntries([...xml.matchAll(/<c r="([A-Z]+)6" s="(\d+)"/g)].map((m) => [m[1], m[2]]))
-  const openStyle = xml.match(/<c r="[A-Z]+7" s="(\d+)"/)[1]
-  const drawing = strFromU8(f[`xl/worksheets/_rels/sheet${n}.xml.rels`]).match(/Target="\/?([^"]*drawings\/[^"]+)"/)[1]
-  const drawingRels = drawing.replace('drawings/', 'drawings/_rels/') + '.rels'
-  for (const m of strFromU8(f[drawingRels]).matchAll(/Target="\/?([^"]+)"/g)) delete f[m[1].replace('../', 'xl/')]  // placeholder
-
+// Sheet ke-n (n >= 3) dari sheet sumber template (SAFETY/5S). rows: array baris, tiap baris array nilai sesuai
+// urutan kolom template. Nilai: string | number | Date | null | { img: { bytes, w, h } } (foto).
+const NS_REL = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships'
+const RELS = (x) => `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${x}</Relationships>`
+function dataSheet(f, n, src, period, rows) {
+  const style = Object.fromEntries([...src.matchAll(/<c r="([A-Z]+)6" s="(\d+)"/g)].map((m) => [m[1], m[2]]))
+  const openStyle = src.match(/<c r="[A-Z]+7" s="(\d+)"/)[1]
   const pics = [], rels = []
   const body = rows.map((vals, r) => {
     const row = 6 + r
@@ -76,7 +73,7 @@ function dataSheet(f, n, period, rows) {
       if (v?.img) {
         const id = pics.length + 1
         f[`xl/media/foto${n}_${id}.jpg`] = v.img.bytes
-        rels.push(`<Relationship Id="rId${id}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/foto${n}_${id}.jpg"/>`)
+        rels.push(`<Relationship Id="rId${id}" Type="${NS_REL}/image" Target="../media/foto${n}_${id}.jpg"/>`)
         pics.push(anchor(id, c, row - 1, v.img))
       }
       return cell(`${L}${row}`, v === 'Open' ? openStyle : style[L], v)
@@ -84,25 +81,41 @@ function dataSheet(f, n, period, rows) {
     return `<row r="${row}" ht="100" customHeight="1">${cells.join('')}</row>`
   }).join('')
 
-  xml = setCell(xml, 'A2', `PT YAHATA FASTENER INDONESIA  |  ${period}`)
-  f[path] = xml.replace(/<row r="6".*<\/sheetData>/s, `${body}</sheetData>`)
-  f[drawing] = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+  f[`xl/worksheets/sheet${n}.xml`] = setCell(src, 'A2', `PT YAHATA FASTENER INDONESIA  |  ${period}`)
+    .replace(/<row r="6".*<\/sheetData>/s, `${body}</sheetData>`)
+  f[`xl/worksheets/_rels/sheet${n}.xml.rels`] = RELS(`<Relationship Id="rId1" Type="${NS_REL}/drawing" Target="/xl/drawings/drawing${n}.xml"/>`)
+  f[`xl/drawings/drawing${n}.xml`] = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
     + pics.join('') + '</xdr:wsDr>'
-  f[drawingRels] = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
-    + rels.join('') + '</Relationships>'
+  f[`xl/drawings/_rels/drawing${n}.xml.rels`] = RELS(rels.join(''))
 }
 
-// data: { title, period, months: [label..] (1-12), rekap: rekap(), kategori: rekapKategori(), safety: rows, fiveS: rows }
+// data: { title, period, months: [label..] (1-12), rekap: rekap(), kategori: rekapKategori(),
+//         weeks: [{ name, type: 'safety' | '5s', rows }] } -> satu sheet per patroli setelah "Grafik Kategori".
 export function buildXlsx(template, data) {
   const f = unzipSync(template)
   const text = (p) => (typeof f[p] === 'string' ? f[p] : strFromU8(f[p]))
   const sheet = (n) => `xl/worksheets/sheet${n}.xml`
-  for (const n of [1, 2, 3, 4]) f[sheet(n)] = text(sheet(n))
+  const src = { safety: text(sheet(3)), '5s': text(sheet(4)) }   // sheet SAFETY & 5S template = sumber, lalu dibuang
+  for (const p of [3, 4].flatMap((n) => [sheet(n), `xl/worksheets/_rels/sheet${n}.xml.rels`, `xl/drawings/drawing${n}.xml`, `xl/drawings/_rels/drawing${n}.xml.rels`, `xl/media/image${n}.png`])) delete f[p]
 
-  f[sheet(1)] = bulanan(f[sheet(1)], data)
-  f[sheet(2)] = kategori(f[sheet(2)], data.period, data.kategori)
-  dataSheet(f, 3, data.period, data.safety)
-  dataSheet(f, 4, data.period, data.fiveS)
+  f[sheet(1)] = bulanan(text(sheet(1)), data)
+  f[sheet(2)] = kategori(text(sheet(2)), data.period, data.kategori)
+  const added = data.weeks.map((s, i) => ({ ...s, n: 3 + i }))
+  for (const s of added) dataSheet(f, s.n, src[s.type], data.period, s.rows)
+
+  // Daftarkan sheet baru di workbook (nama tab, judul cetak baris 4-5), relasi, dan content type.
+  const q = (name) => `'${esc(name)}'`
+  f['xl/workbook.xml'] = text('xl/workbook.xml')
+    .replace(/<sheet name="SAFETY".*?<\/sheets>/s, added.map((s) => `<sheet name="${esc(s.name)}" sheetId="${s.n}" r:id="rIdS${s.n}"/>`).join('') + '</sheets>')
+    .replace(/<definedNames>.*?<\/definedNames>/s, added.length ? `<definedNames>${added.map((s) => `<definedName name="_xlnm.Print_Titles" localSheetId="${s.n - 1}">${q(s.name)}!$4:$5</definedName>`).join('')}</definedNames>` : '')
+  f['xl/_rels/workbook.xml.rels'] = text('xl/_rels/workbook.xml.rels')
+    .replace(/<Relationship [^>]*sheet[34]\.xml"[^>]*\/>/g, '')
+    .replace('</Relationships>', added.map((s) => `<Relationship Id="rIdS${s.n}" Type="${NS_REL}/worksheet" Target="/xl/worksheets/sheet${s.n}.xml"/>`).join('') + '</Relationships>')
+  const OV = 'application/vnd.openxmlformats-officedocument.'
+  f['[Content_Types].xml'] = text('[Content_Types].xml')
+    .replace(/<Override PartName="\/xl\/(worksheets\/sheet|drawings\/drawing)[34]\.xml"[^>]*\/>/g, '')
+    .replace('</Types>', added.map((s) => `<Override PartName="/xl/worksheets/sheet${s.n}.xml" ContentType="${OV}spreadsheetml.worksheet+xml"/><Override PartName="/xl/drawings/drawing${s.n}.xml" ContentType="${OV}drawing+xml"/>`).join('') + '</Types>')
+
   // Foto disimpan .jpg; tanpa tipe ini terdaftar Excel menganggap file rusak.
   const ct = text('[Content_Types].xml')
   if (!ct.includes('Extension="jpg"')) f['[Content_Types].xml'] = ct.replace('<Default ', '<Default Extension="jpg" ContentType="image/jpeg"/><Default ')

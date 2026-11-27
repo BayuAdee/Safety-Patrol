@@ -21,13 +21,12 @@ const out = buildXlsx(tpl, {
   months: ['Jul', 'Agu', 'Sep'],                       // 3 bulan: grafik bulanan dipendekkan
   rekap: rekap(findings, new Date(2026, 6, 1), 3),
   kategori: rekapKategori(findings),
-  safety: [
-    [1, 'TRF-001', d('2026-07-03'), 'Minggu 1', 'Ruang Panel', img, 'Kabel <panel> & "terkelupas"', '', '√', '', '', 'E: Electric', 21, 'A', 'Modifikasi', '1. Yudha\n2. Alex', 'Maintenance', 'Budi', d('2026-07-10'), d('2026-07-07'), img, 8, 'C', 'Close'],
-    [2, 'TRF-002', d('2026-09-18'), 'Minggu 2', 'Lorong', '(foto tidak ada)', 'Oli bocor', '', '√', '', '', 'D: Drop/Fall', 15, 'B', '', 'Eko', 'Engineering', '', null, null, '', '', '', 'Open'],
-  ],
-  fiveS: [
-    [1, 'TRF-003', d('2026-07-17'), 'Minggu 2', 'Gudang', img, 'Kardus', '√', '', '', '√', 'R2', 'S,M', 'Citra', 'Produksi', '', null, null, '', 'Open'],
-  ],
+  weeks: [{ name: 'Safety Week 1 3 Jul 2026', type: 'safety', rows: [
+    [1, 'TRF-001', d('2026-07-03'), 'Ruang Panel', img, 'Kabel <panel> & "terkelupas"', '', '√', '', '', 'E: Electric', 21, 'A', 'Modifikasi', '1. Yudha\n2. Alex', 'Maintenance', 'Pasang cover', 'Budi', d('2026-07-10'), d('2026-07-07'), img, 8, 'C', 'Close'],
+    [2, 'TRF-002', d('2026-09-18'), 'Lorong', '(foto tidak ada)', 'Oli bocor', '', '√', '', '', 'D: Drop/Fall', 15, 'B', '', 'Eko', 'Engineering', 'Lap oli', '', null, null, '', '', '', 'Open'],
+  ] }, { name: '5S Week 2 17 Jul 2026', type: '5s', rows: [
+    [1, 'TRF-003', d('2026-07-17'), 'Gudang', img, 'Kardus', '√', '', '', '√', 'R2', 'S,M', 'Citra', 'Produksi', 'Rapikan', '', null, null, '', 'Open'],
+  ] }],
 })
 
 const f = unzipSync(out)
@@ -59,10 +58,22 @@ assert.ok(charts.map(s).some((x) => x.includes("'Grafik Kategori'!$B$5:$B$9")))
 
 // SAFETY & 5S
 assert.match(s(S3), /Kabel &lt;panel&gt; &amp; "terkelupas"/)
-str(S3, 'P6', '1\\. Yudha\\n2\\. Alex')                    // auditor bernomor, satu nama per baris
-num(S3, 'M6', 21); str(S3, 'R6', 'Budi'); num(S3, 'V6', 8); str(S3, 'W6', 'C'); str(S3, 'X7', 'Open')
+str(S3, 'O6', '1\\. Yudha\\n2\\. Alex')                    // auditor bernomor, satu nama per baris
+num(S3, 'L6', 21); str(S3, 'Q6', 'Pasang cover'); str(S3, 'R6', 'Budi'); num(S3, 'V6', 8); str(S3, 'W6', 'C'); str(S3, 'X7', 'Open')
 assert.doesNotMatch(s(S3), /<row r="8"/)
-str(S4, 'L6', 'R2')
+str(S4, 'K6', 'R2'); str(S4, 'O6', 'Rapikan')
+// Header (dari template): KAIZEN tepat sebelum PIC PERBAIKAN; 5S: KATEGORI, EFFECT di atas S,Q,C,D,M
+const head = (sheet, ref, v) => assert.match(s(sheet), new RegExp(`<c r="${ref}"[^>]*><is><t>${v}</t>`), ref)
+head(S3, 'F4', 'TEMUAN/PROBLEM'); head(S3, 'N4', 'KAIZEN CATEGORY'); head(S3, 'Q4', 'KAIZEN'); head(S3, 'R4', 'PIC PERBAIKAN')
+head(S4, 'F4', 'TEMUAN/PROBLEM'); head(S4, 'K4', 'KATEGORI'); head(S4, 'L4', 'EFFECT'); head(S4, 'L5', 'S,Q,C,D,M')
+head(S4, 'O4', 'KAIZEN'); head(S4, 'P4', 'PIC PERBAIKAN')
+// Satu tab per patroli; sheet SAFETY/5S template dibuang
+const wb = s('xl/workbook.xml')
+assert.match(wb, /<sheet name="Grafik Kategori"[^>]*\/><sheet name="Safety Week 1 3 Jul 2026" sheetId="3" r:id="rIdS3"\/><sheet name="5S Week 2 17 Jul 2026" sheetId="4" r:id="rIdS4"\/><\/sheets>/)
+assert.match(wb, /localSheetId="2">'Safety Week 1 3 Jul 2026'!\$4:\$5</)
+assert.match(s('xl/_rels/workbook.xml.rels'), /Id="rIdS4"[^>]*Target="\/xl\/worksheets\/sheet4.xml"/)
+assert.equal((s('[Content_Types].xml').match(/worksheets\/sheet4.xml/g) || []).length, 1)
+assert.match(s('xl/worksheets/_rels/sheet3.xml.rels'), /drawing3.xml/)
 assert.equal(Object.keys(f).filter((p) => p.startsWith('xl/media/foto')).length, 3)
 assert.match(s('[Content_Types].xml'), /<Default Extension="jpg" ContentType="image\/jpeg"\/>/)   // tanpa ini Excel minta "recover"
 assert.equal(Object.keys(f).filter((p) => p.endsWith('.png')).length, 0)                 // placeholder dibuang

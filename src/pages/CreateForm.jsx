@@ -35,6 +35,13 @@ export default function CreateForm({ onDone }) {
     : <Skeleton n={3} h="h-48" className="flex flex-col gap-4 p-4" />
 
   const safety = type === 'safety'
+  // Kaizen (teks) wajib untuk Safety & 5S; isi spasi saja ditolak server.
+  const kaizenNote = (
+    <label className="block text-sm font-medium text-gray-700">
+      Kaizen
+      <textarea name="kaizen_note" required className={`${INPUT} h-20`} placeholder="Usulan perbaikan..." />
+    </label>
+  )
   return (
     <div className="pb-8">
       <div className="sticky top-16 z-10 border-b border-gray-200 bg-gray-100 lg:top-0 px-4 py-3">
@@ -55,13 +62,15 @@ export default function CreateForm({ onDone }) {
             <h2 className={CARD_TITLE}>2. Penilaian Safety</h2>
             <Select label="Kategori STOP 6" name="stop6" options={STOP6} />
             <ScoreInput />
-            <Checks label="Saran Kaizen (opsional, boleh lebih dari satu)" name="kaizen" options={KAIZEN} required={false} />
+            <Checks label="Kaizen Category (opsional, boleh lebih dari satu)" name="kaizen" options={KAIZEN} required={false} />
+            {kaizenNote}
           </div>
         ) : (
           <div key="5s" className={CARD}>
             <h2 className={CARD_TITLE}>2. Penilaian 5S/5R</h2>
             <Select label="Kategori 5R" name="five_r" options={FIVE_R} />
             <Checks label="Efek Bisnis (SQCDM) - boleh lebih dari satu" name="sqcdm" options={SQCDM} />
+            {kaizenNote}
           </div>
         )}
 

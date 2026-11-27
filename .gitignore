@@ -31,3 +31,6 @@ dist-ssr
 !public/rekap-template.xlsx
 
 AKUN-UJI.md
+
+# dump database, jangan di-push
+*.sql

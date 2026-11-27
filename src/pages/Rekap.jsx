@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { BarChart3, CheckCircle, ClipboardList, Download, PieChart, ShieldAlert, Sparkles, TriangleAlert } from 'lucide-react'
 import { api, photoUrl, toJpeg } from '../api'
-import { BULAN, R5, RANK, S6, SQ, minggu, rekap, rekapDeptRank, rekapKategori } from '../rekap'
+import { BULAN, R5, RANK, S6, SQ, perWeek, rekap, rekapDeptRank, rekapKategori } from '../rekap'
 import { BTN, CARD, CARD_TITLE, FIVE_R, INPUT, KAIZEN, STOP6, Skeleton, TYPE, labels } from '../ui'
 import { buildXlsx } from '../xlsx'
 
@@ -198,17 +198,18 @@ async function downloadExcel({ rows: findings, master }, fileName, sheets) {
 
   const day = (s) => s && new Date(s)
   const row = (f, i, middle, afterExtra = []) => [
-    i + 1, f.code, day(f.created_at), `Minggu ${minggu(new Date(f.created_at))}`, A[f.area_id], photo(f.photo_before), f.description,
+    i + 1, f.code, day(f.created_at), A[f.area_id], photo(f.photo_before), f.description,
     ...['material', 'machine', 'man', 'method'].map((m) => (f.four_m.includes(m) ? '√' : '')),
     ...middle,
-    f.auditors ? f.auditors.map((n, k) => `${k + 1}. ${cap(n)}`).join('\n') : P[f.created_by], D[f.target_dept_id], P[f.closed_by] ?? '', day(f.due_date), day(f.closed_at), after[f.id] ? photo(after[f.id]) : '', ...afterExtra, f.status === 'open' ? 'Open' : 'Close',
+    f.auditors ? f.auditors.map((n, k) => `${k + 1}. ${cap(n)}`).join('\n') : P[f.created_by], D[f.target_dept_id], f.kaizen_note ?? '', P[f.closed_by] ?? '', day(f.due_date), day(f.closed_at), after[f.id] ? photo(after[f.id]) : '', ...afterExtra, f.status === 'open' ? 'Open' : 'Close',
   ]
-  const safety = findings.filter((f) => f.type === 'safety')
-    .map((f, i) => row(f, i, [STOP6[f.stop6], f.score, f.rank, f.kaizen ? labels(KAIZEN, f.kaizen) : ''], [f.score_after ?? '', f.rank_after ?? '']))
-  const fiveS = findings.filter((f) => f.type === '5s')
-    .map((f, i) => row(f, i, [`R${f.five_r}`, f.sqcdm.join(',')]))
+  const cols = {
+    safety: (f, i) => row(f, i, [STOP6[f.stop6], f.score, f.rank, f.kaizen ? labels(KAIZEN, f.kaizen) : ''], [f.score_after ?? '', f.rank_after ?? '']),
+    '5s': (f, i) => row(f, i, [`R${f.five_r}`, f.sqcdm.join(',')]),
+  }
+  const weeks = perWeek(findings).map(({ name, type, fs }) => ({ name, type, rows: fs.map(cols[type]) }))
 
-  const out = buildXlsx(new Uint8Array(tpl), { safety, fiveS, ...sheets })
+  const out = buildXlsx(new Uint8Array(tpl), { weeks, ...sheets })
   const a = document.createElement('a')
   a.href = URL.createObjectURL(new Blob([out], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }))
   a.download = fileName
