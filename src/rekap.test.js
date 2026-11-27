@@ -1,6 +1,6 @@
 // Jalankan: node src/rekap.test.js
 import assert from 'node:assert/strict'
-import { rekap, rekapDeptRank, rekapKategori } from './rekap.js'
+import { perWeek, rekap, rekapDeptRank, rekapKategori } from './rekap.js'
 
 const at = (y, m, d) => new Date(y, m - 1, d, 9).toISOString()
 const rows = [
@@ -48,4 +48,17 @@ assert.deepEqual(k.rank, [3, 1, 0, 2])                                // Total, 
 assert.deepEqual(k.rankStop6[0], [1, 1, 0, 0, 0, 0, 0, 0])
 assert.deepEqual(k.rankStop6[1], [0, 0, 0, 0, 0, 0, 0, 0])
 assert.deepEqual(k.rankStop6[2], [2, 0, 0, 0, 0, 0, 0, 2])
+// perWeek: satu kelompok per minggu per jenis, Safety dulu, semua tanggal ditulis, nama tab maks. 31 karakter
+const w = perWeek([
+  { type: '5s', created_at: at(2026, 11, 13), c: 'E' }, { type: 'safety', created_at: at(2026, 11, 28), c: 'D' },
+  { type: 'safety', created_at: at(2026, 11, 14), c: 'A' }, { type: 'safety', created_at: at(2026, 11, 13), c: 'B' },
+  { type: 'safety', created_at: at(2026, 12, 1), c: 'F' },
+  ...[2, 3, 4, 5, 6, 7, 8, 9, 10, 11].map((d) => ({ type: 'safety', created_at: at(2026, 12, d), c: 'G' })),
+])
+assert.deepEqual(w.map((g) => [g.name, g.type, g.fs.map((f) => f.c).join('')]), [
+  ['Safety Week 1 13,14 Nov 2026', 'safety', 'BA'],
+  ['5S Week 1 13 Nov 2026', '5s', 'E'],
+  ['Safety Week 2 28 Nov 2026', 'safety', 'D'],
+  ['Safety Week 1 1-11 Des 2026', 'safety', 'FGGGGGGGGGG'],   // "1,2,...,11" > 31 karakter
+])
 console.log('rekap OK')

@@ -32,5 +32,8 @@ dist-ssr
 
 AKUN-UJI.md
 
+# dump database, jangan di-push
+*.sql
+
 start.bat
 stop.bat

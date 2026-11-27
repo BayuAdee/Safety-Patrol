@@ -1,6 +1,7 @@
 # Membuat public/rekap-template.xlsx (sekali jalan, saat format berubah):  python scripts/buat_template.py
 # Isi: "Grafik Bulanan" (tabel per bulan Safety & 5S, 1-12 baris, + 4 grafik), "Grafik Kategori" (5R/SQCDM, STOP-6/Rank,
-# 12 grafik), SAFETY dan 5S (header + 1 baris contoh gaya). Browser (src/xlsx.js) mengisi angka, daftar temuan, foto,
+# 12 grafik), SAFETY dan 5S (header + 1 baris contoh gaya; browser
+# menyalinnya jadi satu sheet per patroli lalu membuang keduanya). Browser (src/xlsx.js) mengisi angka, daftar temuan, foto,
 # dan memendekkan rentang grafik bulanan sesuai jumlah bulan.
 import zipfile
 from io import BytesIO
@@ -17,14 +18,18 @@ from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 OUT = 'public/rekap-template.xlsx'
 
 # Kolom data. HARUS sama urutannya dengan SHEETS di src/xlsx.js. (judul, lebar, grup header)
-BASE = [('NO', 5), ('KODE', 10), ('TANGGAL', 12), ('MINGGU', 10), ('AREA', 20), ('FOTO BEFORE', 26),
-        ('TEMUAN', 34), ('MATERIAL', 10, '4M'), ('MACHINE', 10, '4M'), ('MAN', 10, '4M'), ('METHOD', 10, '4M')]
-TAIL = [('AUDITOR', 14), ('PIC', 14), ('DIPERBAIKI OLEH', 14), ('DUE DATE', 12), ('ACTUAL PERBAIKAN', 13), ('FOTO AFTER', 26), ('PROGRES', 11)]
+BASE = [('NO', 5), ('KODE', 10), ('TANGGAL', 12), ('AREA', 20), ('FOTO BEFORE', 26),
+        ('TEMUAN/PROBLEM', 34), ('MATERIAL', 10, '4M'), ('MACHINE', 10, '4M'), ('MAN', 10, '4M'), ('METHOD', 10, '4M')]
+TAIL = [('AUDITOR', 14), ('PIC', 14), ('KAIZEN', 30), ('PIC PERBAIKAN', 14), ('DUE DATE', 12), ('ACTUAL PERBAIKAN', 13), ('FOTO AFTER', 26), ('PROGRES', 11)]
 SHEETS = {
-    'SAFETY': ('SAFETY PATROL & 4M ANALYSIS', BASE + [('STOP 6', 16), ('POIN BEFORE', 8), ('RANK BEFORE', 8), ('SARAN KAIZEN', 22)]
+    'SAFETY': ('SAFETY PATROL & 4M ANALYSIS', BASE + [('STOP 6', 16), ('POIN BEFORE', 8), ('RANK BEFORE', 8), ('KAIZEN CATEGORY', 22)]
                + TAIL[:-1] + [('POIN AFTER', 8), ('RANK AFTER', 8)] + TAIL[-1:]),
-    '5S': ('5S/5R PATROL & 4M ANALYSIS', BASE + [('5R', 12), ('SQCDM', 12)] + TAIL),
+    '5S': ('5S/5R PATROL & 4M ANALYSIS', BASE + [('KATEGORI', 12), ('S,Q,C,D,M', 12, 'EFFECT')] + TAIL),
 }
+
+# Keterangan kode di sheet 5S (sama dengan SQCDM & FIVE_R di src/ui.jsx). Sampai R3 saja (diminta pemilik).
+LEGEND = [('S', 'Safety'), ('Q', 'Quality'), ('C', 'Cost'), ('D', 'Delivery'), ('M', 'Moral'),
+          ('R1', 'Ringkas'), ('R2', 'Rapi'), ('R3', 'Resik')]
 
 thin = Side(style='thin', color='000000')
 box = Border(left=thin, right=thin, top=thin, bottom=thin)
@@ -131,24 +136,35 @@ def data_sheets(wb):   # sheet SAFETY dan 5S
         ws['A1'].font = Font(bold=True, size=16)
         ws['A2'] = 'PT YAHATA FASTENER INDONESIA'          # diganti browser: + periode
         ws['A2'].font = Font(bold=True, size=11, color='4B5563')
+        if name == '5S':   # Standar Information di kanan judul (kolom G..N, baris 1-3); tabel tetap mulai baris 4
+            for i, (k, v) in enumerate(LEGEND, 7):
+                for r, val, font, fill in ((1, None, head_font, head_fill), (2, k, Font(bold=True, size=10), PatternFill('solid', fgColor='E5E7EB')), (3, v, Font(size=10), None)):
+                    cell = ws.cell(r, i, val)
+                    cell.font, cell.alignment, cell.border = font, center, box
+                    if fill: cell.fill = fill
+            ws.cell(1, 7, 'STANDAR INFORMATION')
+            ws.merge_cells(start_row=1, end_row=1, start_column=7, end_column=6 + len(LEGEND))
+            ws.row_dimensions[3].height = 18
         for i, c in enumerate(cols, 1):
             L = ws.cell(4, i).column_letter
             ws.column_dimensions[L].width = c[1]
             for r in (4, 5):
                 ws.cell(r, i).fill, ws.cell(r, i).font = head_fill, head_font
                 ws.cell(r, i).alignment, ws.cell(r, i).border = center, box
-            if len(c) == 3:                                  # header 2 tingkat: 4M di atas
+            if len(c) == 3:                                  # header 2 tingkat: grup (4M, EFFECT) di atas
                 ws.cell(5, i, c[0])
             else:
                 ws.cell(4, i, c[0]); ws.merge_cells(start_row=4, end_row=5, start_column=i, end_column=i)
-        m = [i for i, c in enumerate(cols, 1) if len(c) == 3]
-        ws.cell(4, m[0], '4M'); ws.merge_cells(start_row=4, end_row=4, start_column=m[0], end_column=m[-1])
+        for g in dict.fromkeys(c[2] for c in cols if len(c) == 3):
+            m = [i for i, c in enumerate(cols, 1) if c[2:] == (g,)]
+            ws.cell(4, m[0], g)
+            if len(m) > 1: ws.merge_cells(start_row=4, end_row=4, start_column=m[0], end_column=m[-1])
         ws.row_dimensions[4].height = 20; ws.row_dimensions[5].height = 20
         # Baris 6 = contoh gaya baris data, baris 7 kolom terakhir = gaya PROGRES "Open" (merah).
         for i, c in enumerate(cols, 1):
             cell = ws.cell(6, i)
             cell.border = box
-            cell.alignment = left if c[0] in ('AREA', 'TEMUAN', 'SARAN KAIZEN', 'SQCDM', 'STOP 6', 'AUDITOR', 'PIC', 'DIPERBAIKI OLEH') else center
+            cell.alignment = left if c[0] in ('AREA', 'TEMUAN/PROBLEM', 'KAIZEN CATEGORY', 'KAIZEN', 'STOP 6', 'AUDITOR', 'PIC', 'PIC PERBAIKAN') else center
             cell.font = Font(size=10, bold=c[0] in ('PROGRES', 'MATERIAL', 'MACHINE', 'MAN', 'METHOD'))
             if c[0] in ('TANGGAL', 'DUE DATE', 'ACTUAL PERBAIKAN'):
                 cell.number_format = 'dd/mm/yyyy'
@@ -161,7 +177,7 @@ def data_sheets(wb):   # sheet SAFETY dan 5S
         ws.print_title_rows = '4:5'                                   # header diulang tiap halaman
         ws.page_margins.left = ws.page_margins.right = 0.3
         png = BytesIO(); PILImage.new('RGB', (8, 8), 'white').save(png, 'PNG')
-        ws.add_image(Image(png), 'F6')                       # placeholder: menyiapkan drawing, diganti browser
+        ws.add_image(Image(png), 'E6')                       # placeholder: menyiapkan drawing, diganti browser
 
 data_sheets(wb)
 buf = BytesIO(); wb.save(buf)

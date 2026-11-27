@@ -89,12 +89,14 @@ class PatrolController extends Controller
         // "yudha, alex,,ade" -> {yudha,alex,ade}
         $auditors = array_values(array_filter(array_map('trim', explode(',', (string) $r->auditors)), 'strlen'));
         abort_unless($auditors, 422, 'Isi Nama Auditor (pisahkan dengan koma).');
+        $kaizenNote = trim((string) $r->kaizen_note);
+        abort_if($kaizenNote === '', 422, 'Isi Kaizen.');
 
         $this->insertWithPhoto($r, 'findings', 'photo_before', [
             'type' => $r->type, 'area_id' => $r->area_id, 'four_m' => $arr('four_m'), 'description' => $r->description,
             'target_dept_id' => $r->target_dept_id, 'due_date' => $r->due_date,
             'stop6' => $r->stop6, 'severity' => $r->severity, 'frequency' => $r->frequency, 'probability' => $r->probability,
-            'kaizen' => $arr('kaizen'),
+            'kaizen' => $arr('kaizen'), 'kaizen_note' => $kaizenNote,
             'five_r' => $r->five_r, 'sqcdm' => $arr('sqcdm'),
             'auditors' => $this->pgArray($auditors), 'created_by' => $r->user()->id,
         ]);

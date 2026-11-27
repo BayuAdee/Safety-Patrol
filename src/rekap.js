@@ -59,3 +59,18 @@ export function rekapKategori(rows) {
     rankStop6: RANK.map((k) => stop6(safety.filter((r) => r.rank === k))),
   }
 }
+
+// Excel: satu sheet per patroli per jenis, urut tanggal (Safety dulu, lalu 5S, di minggu yang sama).
+// Nama tab = "Safety Week 1 13,14 Nov 2026" (semua tanggal temuan minggu itu); Excel membatasi 31 karakter -> "1-14".
+export function perWeek(list) {
+  const key = (f) => { const d = new Date(f.created_at); return `${d.getFullYear()}-${String(d.getMonth()).padStart(2, '0')}-${minggu(d)}-${f.type === 'safety' ? 0 : 1}` }
+  const groups = {}
+  for (const f of [...list].sort((a, b) => key(a).localeCompare(key(b)) || new Date(a.created_at) - new Date(b.created_at)))
+    (groups[key(f)] ??= []).push(f)                      // kunci bukan angka: urutan sisip terjaga
+  return Object.values(groups).map((fs) => {
+    const d = new Date(fs[0].created_at), days = [...new Set(fs.map((f) => new Date(f.created_at).getDate()))]
+    const name = (ds) => `${fs[0].type === 'safety' ? 'Safety' : '5S'} Week ${minggu(d)} ${ds} ${BULAN[d.getMonth()]} ${d.getFullYear()}`
+    const long = name(days.join(','))
+    return { name: long.length > 31 ? name(`${days[0]}-${days.at(-1)}`) : long, type: fs[0].type, fs }
+  })
+}

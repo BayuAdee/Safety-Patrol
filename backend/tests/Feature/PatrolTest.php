@@ -41,6 +41,7 @@ class PatrolTest extends TestCase
             'type' => 'safety', 'area_id' => $area, 'four_m' => ['machine'], 'description' => 'Kabel terkelupas',
             'target_dept_id' => $mtc, 'stop6' => 'E',
             'severity' => 12, 'frequency' => 5, 'probability' => 4, 'kaizen' => ['modifikasi'], 'due_date' => '', 'auditors' => ' yudha, alex,,ade ',
+            'kaizen_note' => ' Pasang cover kabel ',
         ];
     }
 
@@ -125,6 +126,8 @@ class PatrolTest extends TestCase
         $this->assertSame($this->auditor->id, $f->created_by);                    // pembuat = akun login
         $this->assertSame('{yudha,alex,ade}', $f->auditors);                     // nama auditor dipecah per koma
         $this->buatTemuan(['auditors' => ' , '])->assertStatus(422);
+        $this->assertSame('Pasang cover kabel', $f->kaizen_note);                // Kaizen teks wajib, dirapikan
+        $this->buatTemuan(['kaizen_note' => '  '])->assertStatus(422);
         $this->assertSame('{machine}', $f->four_m);
         $this->assertNull($f->due_date);                                           // due date opsional
         $this->assertSame([21, 'A'], [$f->score, $f->rank]);                       // 12+5+4, dihitung database
